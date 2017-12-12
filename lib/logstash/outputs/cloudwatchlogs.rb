@@ -20,6 +20,10 @@ require "logstash/plugin_mixins/aws_config"
 
 require "time"
 
+# drmdrew: ugly kludge alert! See https://github.com/jruby/jruby/issues/3645
+require "aws-sdk"
+module Aws; const_set(:CloudWatchLogs, Aws::CloudWatchLogs); end
+
 # This output lets you send log data to AWS CloudWatch Logs service
 #
 class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
