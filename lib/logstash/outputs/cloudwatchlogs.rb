@@ -104,7 +104,7 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
     @buffer = Buffer.new(
       max_batch_count: batch_count, max_batch_size: batch_size,
       buffer_duration: @buffer_duration, out_queue_size: @queue_size, logger: @logger,
-      size_of_item_proc: Proc.new {|event| event.get(:message).bytesize + PER_EVENT_OVERHEAD})
+      size_of_item_proc: Proc.new {|event| event[:message].bytesize + PER_EVENT_OVERHEAD})
     @publisher = Thread.new do
       @buffer.deq do |batch|
         flush(batch)
@@ -259,12 +259,12 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
 
   private
   def prepare_log_events(events)
-    log_events = events.sort {|e1,e2| e1.get(:timestamp) <=> e2.get(:timestamp)}
+    log_events = events.sort {|e1,e2| e1[:timestamp] <=> e2[:timestamp]}
     batches = []
-    if log_events[-1].get(:timestamp) - log_events[0].get(:timestamp) > MAX_DISTANCE_BETWEEN_EVENTS
+    if log_events[-1][:timestamp] - log_events[0][:timestamp] > MAX_DISTANCE_BETWEEN_EVENTS
       temp_batch = []
       log_events.each do |log_event|
-        if temp_batch.empty? || log_event.get(:timestamp) - temp_batch[0].get(:timestamp) <= MAX_DISTANCE_BETWEEN_EVENTS
+        if temp_batch.empty? || log_event[:timestamp] - temp_batch[0][:timestamp] <= MAX_DISTANCE_BETWEEN_EVENTS
           temp_batch << log_event
         else
           batches << temp_batch
