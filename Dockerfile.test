@@ -1,8 +1,10 @@
-FROM jruby:1.7-jdk as jruby-build
+FROM jruby:9-alpine as jruby-build
+RUN apk add --no-cache git
+RUN gem install bundler
 COPY . /usr/src/logstash-output-cloudwatchlogs/
 RUN cd /usr/src/logstash-output-cloudwatchlogs && \
-    gem install bundler && \
-    bundle install && \
+    bundle install
+RUN cd /usr/src/logstash-output-cloudwatchlogs && \
     bundle exec rspec && \
     gem build logstash-output-cloudwatchlogs.gemspec
 
