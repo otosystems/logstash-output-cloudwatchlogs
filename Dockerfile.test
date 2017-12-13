@@ -1,5 +1,5 @@
-FROM jruby:9-alpine as jruby-build
-RUN apk add --no-cache git
+FROM jruby:1.7.27-jre as jruby-build
+RUN apt-get update -y && apt-get install -y git
 RUN gem install bundler
 COPY . /usr/src/logstash-output-cloudwatchlogs/
 RUN cd /usr/src/logstash-output-cloudwatchlogs && \
