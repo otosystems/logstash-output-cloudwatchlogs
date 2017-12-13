@@ -1,0 +1,8 @@
+FROM jruby:1.7-jdk as jruby-build
+COPY . /usr/src/logstash-output-cloudwatchlogs/
+RUN cd /usr/src/logstash-output-cloudwatchlogs && \
+    gem install bundler && \
+    bundle install && \
+    bundle exec rspec && \
+    gem build logstash-output-cloudwatchlogs.gemspec
+
