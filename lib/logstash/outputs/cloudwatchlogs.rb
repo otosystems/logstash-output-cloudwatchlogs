@@ -126,6 +126,9 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
       @log_stream_name.gsub!("%ipv4%", Socket.ip_address_list.find { |ai| ai.ipv4? && !ai.ipv4_loopback? }.ip_address)
     end
 
+    # interpolate log_stream_name param
+    @log_stream_name = event.sprintf(@log_group_name)
+
     if @use_codec
       @codec.on_event() {|event, payload| @buffer.enq({:timestamp => event.timestamp.time.to_f*1000,
         :message => payload})}
