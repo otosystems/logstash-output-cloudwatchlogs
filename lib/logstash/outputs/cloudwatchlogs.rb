@@ -127,7 +127,7 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
     end
 
     # interpolate log_stream_name param
-    @log_stream_name = event.sprintf(@log_group_name)
+    log_stream_name = event.sprintf(@log_group_name)
 
     if @use_codec
       @codec.on_event() {|event, payload| @buffer.enq({:timestamp => event.timestamp.time.to_f*1000,
@@ -181,7 +181,7 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
     sleep(delay) if delay > 0
     backoff = 1
     begin
-      @logger.info("Sending #{log_events.size} events to #{@log_group_name}/#{@log_stream_name}")
+      @logger.info("Sending #{log_events.size} events to #{@log_group_name}/#{log_stream_name}")
       @last_flush = Time.now.to_f
       if @dry_run
         log_events.each do |event|
@@ -191,7 +191,7 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
       end
       response = @cwl.put_log_events(
           :log_group_name => @log_group_name,
-          :log_stream_name => @log_stream_name,
+          :log_stream_name => log_stream_name,
           :log_events => log_events,
           :sequence_token => @sequence_token
       )
@@ -231,9 +231,9 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
         @logger.error(e)
       end
       begin
-        @cwl.create_log_stream(:log_group_name => @log_group_name, :log_stream_name => @log_stream_name)
+        @cwl.create_log_stream(:log_group_name => @log_group_name, :log_stream_name => log_stream_name)
       rescue Aws::CloudWatchLogs::Errors::ResourceAlreadyExistsException => e
-        @logger.info("Log stream #{@log_stream_name} already exists")
+        @logger.info("Log stream #{log_stream_name} already exists")
       rescue Exception => e
         @logger.error(e)
       end
