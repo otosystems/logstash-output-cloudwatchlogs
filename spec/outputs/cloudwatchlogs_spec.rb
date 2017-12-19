@@ -84,7 +84,7 @@ describe "outputs/cloudwatchlogs" do
       before :each do
         @event = LogStash::Event.new
         @event.timestamp = LogStash::Timestamp.coerce("2015-02-13T01:19:08Z")
-        @event["message"] = "test"
+        @event.set("message", "test")
         expect(@output.buffer).not_to receive(:enq)
       end
       context "when event doesn't have @timestamp" do
@@ -107,7 +107,7 @@ describe "outputs/cloudwatchlogs" do
           expect(@output.buffer).to receive(:enq) { {:timestamp => 1423786748000.0, :message => "test"} }
           event = LogStash::Event.new
           event.timestamp = LogStash::Timestamp.coerce("2015-02-13T01:19:08Z")
-          event["message"] = "test"
+          event.set("message", "test")
           expect { @output.receive(event) }.to_not raise_error
         end
       end
@@ -454,8 +454,8 @@ describe "outputs/cloudwatchlogs/buffer" do
         it "should accept an item" do
           @buffer.enq("ab")
           @buffer.in_batch.should eql(["ab"])
-          @buffer.in_size.should == 2
-          @buffer.in_count.should == 1
+          @buffer.in_size.should be == 2
+          @buffer.in_count.should be == 1
         end
       end
 
@@ -464,8 +464,8 @@ describe "outputs/cloudwatchlogs/buffer" do
           5.times do |i| @buffer.enq("#{i}") end
           @buffer.in_batch.should eql([])
           @buffer.out_queue.deq(true).should eql(["0", "1", "2", "3", "4"])
-          @buffer.in_size.should == 0
-          @buffer.in_count.should == 0
+          @buffer.in_size.should be == 0
+          @buffer.in_count.should be == 0
         end
       end
 
@@ -484,8 +484,8 @@ describe "outputs/cloudwatchlogs/buffer" do
           2.times do |i| @buffer.enq("abcd#{i}") end
           @buffer.in_batch.should eql([])
           @buffer.out_queue.deq(true).should eql(["abcd0", "abcd1"])
-          @buffer.in_size.should == 0
-          @buffer.in_count.should == 0
+          @buffer.in_size.should be == 0
+          @buffer.in_count.should be == 0
         end
       end
 
@@ -494,8 +494,8 @@ describe "outputs/cloudwatchlogs/buffer" do
           3.times do |i| @buffer.enq("abc#{i}") end
           @buffer.in_batch.should eql(["abc2"])
           @buffer.out_queue.deq(true).should eql(["abc0", "abc1"])
-          @buffer.in_size.should == 4
-          @buffer.in_count.should == 1
+          @buffer.in_size.should be == 4
+          @buffer.in_count.should be == 1
         end
       end
     end
@@ -514,7 +514,7 @@ describe "outputs/cloudwatchlogs/buffer" do
           sleep(2)
           @buffer.in_batch.should eql([])
           @buffer.out_queue.deq(true).should eql(["ab"])
-          @buffer.in_size.should == 0
+          @buffer.in_size.should be == 0
           @buffer.in_count.should == 0
         end
       end
@@ -538,12 +538,12 @@ describe "outputs/cloudwatchlogs/buffer" do
           while !@buffer.out_queue.empty? do
             batches << @buffer.out_queue.deq(true)
           end
-          batches.size.should >= 4
-          batches.size.should <= 5
+          batches.size.should be <= 4
+          batches.size.should be <= 5
           batches.shift
           batches.pop
           batches.each do |batch|
-            batch.size.should == 5
+            batch.size.should be == 5
           end
         end
       end
@@ -564,7 +564,7 @@ describe "outputs/cloudwatchlogs/buffer" do
         sleep(0.01)
       end
       @buffer.close
-      @buffer.in_count.should == 0
+      @buffer.in_count.should be == 0
       consumer.join
     end
   end

@@ -185,7 +185,7 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
       @last_flush = Time.now.to_f
       if @dry_run
         log_events.each do |event|
-          puts event.get(:message)
+          puts event[:message]
         end
         return
       end
