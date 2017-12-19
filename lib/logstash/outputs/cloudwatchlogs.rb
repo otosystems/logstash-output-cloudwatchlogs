@@ -137,7 +137,7 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
     return unless output?(event)
 
     # interpolate log_stream_name param
-    @log_stream_name = event.sprintf(@log_group_name)
+    @log_stream_name = event.sprintf(@log_stream_name)
 
     if event == LogStash::SHUTDOWN
       @buffer.close
