@@ -139,10 +139,8 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
   def receive(event)
     return unless output?(event)
 
-    #$lgn = event.sprintf(@log_stream_name)
-
     # log some output to debug what's going on
-    @logger.info("Event received. [docker][name]: #{event.get("[docker][name]")}")
+    @logger.info("Event received. [docker][name]: #{event.get("[docker][name]")} #{event.sprintf(@log_stream_name)}")
     require 'time'
     $lgn = "#{event.get("[docker][name]")}-#{Time.now.strftime("%Y%m%d")}"
 
