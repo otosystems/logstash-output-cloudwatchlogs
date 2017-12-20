@@ -82,6 +82,9 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
   # Only accessed by tests
   attr_reader :buffer
 
+  # global variable for storing the log stream name
+  $lgn = ""
+
   public
   def register
     require "aws-sdk"
@@ -136,6 +139,13 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
   def receive(event)
     return unless output?(event)
 
+    # log some output to debug what's going on
+    if @dry_run
+      @logger.info("Event received. [docker][name]: #{event.get("[docker][name]")}, log_stream_name from config: #{event.sprintf(@log_stream_name)}")
+    end
+    # interpolate log_stream_name provided in the config
+    $lgn = event.sprintf(@log_stream_name)
+
     if event == LogStash::SHUTDOWN
       @buffer.close
       @publisher.join
@@ -178,7 +188,7 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
     sleep(delay) if delay > 0
     backoff = 1
     begin
-      @logger.info("Sending #{log_events.size} events to #{@log_group_name}/#{@log_stream_name}")
+      @logger.info("Sending #{log_events.size} events to #{@log_group_name}/#{$lgn}")
       @last_flush = Time.now.to_f
       if @dry_run
         log_events.each do |event|
@@ -188,7 +198,7 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
       end
       response = @cwl.put_log_events(
           :log_group_name => @log_group_name,
-          :log_stream_name => @log_stream_name,
+          :log_stream_name => $lgn,
           :log_events => log_events,
           :sequence_token => @sequence_token
       )
@@ -228,9 +238,9 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
         @logger.error(e)
       end
       begin
-        @cwl.create_log_stream(:log_group_name => @log_group_name, :log_stream_name => @log_stream_name)
+        @cwl.create_log_stream(:log_group_name => @log_group_name, :log_stream_name => $lgn)
       rescue Aws::CloudWatchLogs::Errors::ResourceAlreadyExistsException => e
-        @logger.info("Log stream #{@log_stream_name} already exists")
+        @logger.info("Log stream #{$lgn} already exists")
       rescue Exception => e
         @logger.error(e)
       end
