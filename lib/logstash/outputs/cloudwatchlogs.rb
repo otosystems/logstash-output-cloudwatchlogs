@@ -82,6 +82,9 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
   # Only accessed by tests
   attr_reader :buffer
 
+  # local variable for storing the log stream name
+  lgn = ""
+
   public
   def register
     require "aws-sdk"
@@ -136,13 +139,12 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
   def receive(event)
     return unless output?(event)
 
-    # grab the docker image name from event 
-    if @log_stream_name.include? "%[docker][name]%"
-      @log_stream_name.gsub!("%[docker][name]%", event.get("[docker][name]"))
-    end
+    #lgn = event.sprintf(@log_stream_name)
 
     # log some output to debug what's going on
     @logger.info("Event received. [docker][name]: #{event.get("[docker][name]")}")
+    require 'time'
+    lgn = "#{event.get("[docker][name]")}-#{Time.now.strftime("%Y%m%d")}"
 
     if event == LogStash::SHUTDOWN
       @buffer.close
@@ -186,7 +188,7 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
     sleep(delay) if delay > 0
     backoff = 1
     begin
-      @logger.info("Sending #{log_events.size} events to #{@log_group_name}/#{@log_stream_name}")
+      @logger.info("Sending #{log_events.size} events to #{@log_group_name}/#{lgn}")
       @last_flush = Time.now.to_f
       if @dry_run
         log_events.each do |event|
@@ -196,7 +198,7 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
       end
       response = @cwl.put_log_events(
           :log_group_name => @log_group_name,
-          :log_stream_name => @log_stream_name,
+          :log_stream_name => lgn,
           :log_events => log_events,
           :sequence_token => @sequence_token
       )
@@ -236,9 +238,9 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
         @logger.error(e)
       end
       begin
-        @cwl.create_log_stream(:log_group_name => @log_group_name, :log_stream_name => @log_stream_name)
+        @cwl.create_log_stream(:log_group_name => @log_group_name, :log_stream_name => lgn)
       rescue Aws::CloudWatchLogs::Errors::ResourceAlreadyExistsException => e
-        @logger.info("Log stream #{@log_stream_name} already exists")
+        @logger.info("Log stream #{lgn} already exists")
       rescue Exception => e
         @logger.error(e)
       end
