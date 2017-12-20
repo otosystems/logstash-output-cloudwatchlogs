@@ -138,8 +138,11 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
 
     # grab the docker image name from event 
     if @log_stream_name.include? "%[docker][name]%"
-      @log_stream_name.gsub!("%[docker][name]%", event.get("[docker][image]"))
+      @log_stream_name.gsub!("%[docker][name]%", event.get("[docker][name]"))
     end
+
+    # log some output to debug what's going on
+    @logger.info("Event received. [docker][name]: #{event.get("[docker][name]")}")
 
     if event == LogStash::SHUTDOWN
       @buffer.close
