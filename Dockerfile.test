@@ -1,10 +1,14 @@
 FROM jruby:1.7.27-jre as jruby-build
 RUN apt-get update -y && apt-get install -y git
 RUN gem install bundler
+
 COPY . /usr/src/logstash-output-cloudwatchlogs/
 RUN cd /usr/src/logstash-output-cloudwatchlogs && \
     bundle install
-RUN cd /usr/src/logstash-output-cloudwatchlogs && \
+
+VOLUME /usr/src/logstash-output-cloudwatchlogs
+
+CMD cd /usr/src/logstash-output-cloudwatchlogs && \
     bundle exec rspec && \
     gem build logstash-output-cloudwatchlogs.gemspec
 

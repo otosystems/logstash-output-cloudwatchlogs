@@ -363,6 +363,7 @@ describe "outputs/cloudwatchlogs" do
         it "should not retry" do
           @output.log_group_name = nil
           @output.log_stream_name = nil
+          @output.interp_log_stream_name = nil
           @output.sequence_token = nil
           @response = double(Aws::PageableResponse, :next_sequence_token => 'ntoken')
           @ex = Aws::CloudWatchLogs::Errors::InvalidParameterException.new(nil, nil)

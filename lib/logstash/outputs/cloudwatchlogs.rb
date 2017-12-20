@@ -79,6 +79,9 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
 
   attr_accessor :sequence_token, :last_flush, :cwl
 
+  # Used to store the most recent interpolation of the target log stream name
+  attr_accessor :interp_log_stream_name
+
   # Only accessed by tests
   attr_reader :buffer
 
@@ -125,6 +128,7 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
       require "socket"
       @log_stream_name.gsub!("%ipv4%", Socket.ip_address_list.find { |ai| ai.ipv4? && !ai.ipv4_loopback? }.ip_address)
     end
+    @interp_log_stream_name = @log_stream_name
 
     if @use_codec
       @codec.on_event() {|event, payload| @buffer.enq({:timestamp => event.timestamp.time.to_f*1000,
@@ -136,9 +140,12 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
   def receive(event)
     return unless output?(event)
 
-    # log some output to debug what's going on
+    # interpolate the log_stream_name using the most recently received event
+    @interp_log_stream_name = event.sprintf(@log_stream_name)
+
+    # log some output to debug interpolation of log stream name
     if @dry_run
-      @logger.info("Event received. [docker][name]: #{event.get("[docker][name]")}, log_stream_name from config: #{event.sprintf(@log_stream_name)}")
+      @logger.info("Event received. Interpolated log_stream_name: #{@interp_log_stream_name}")
     end
 
     if event == LogStash::SHUTDOWN
@@ -149,6 +156,7 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
       return
     end
     return if invalid?(event)
+
 
     if @use_codec
       @codec.encode(event)
@@ -182,10 +190,8 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
     delay = MIN_DELAY - (Time.now.to_f - @last_flush)
     sleep(delay) if delay > 0
     backoff = 1
-    # interpolate the log_stream_name using the first event of the batch
-    log_stream_name = log_events.first.sprintf(@log_stream_name)
     begin
-      @logger.info("Sending #{log_events.size} events to #{@log_group_name}/#{log_stream_name}")
+      @logger.info("Sending #{log_events.size} events to #{@log_group_name}/#{@interp_log_stream_name}")
       @last_flush = Time.now.to_f
       if @dry_run
         log_events.each do |event|
@@ -195,7 +201,7 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
       end
       response = @cwl.put_log_events(
           :log_group_name => @log_group_name,
-          :log_stream_name => log_stream_name,
+          :log_stream_name => @interp_log_stream_name,
           :log_events => log_events,
           :sequence_token => @sequence_token
       )
@@ -235,9 +241,9 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
         @logger.error(e)
       end
       begin
-        @cwl.create_log_stream(:log_group_name => @log_group_name, :log_stream_name => log_stream_name)
+        @cwl.create_log_stream(:log_group_name => @log_group_name, :log_stream_name => @interp_log_stream_name)
       rescue Aws::CloudWatchLogs::Errors::ResourceAlreadyExistsException => e
-        @logger.info("Log stream #{log_stream_name} already exists")
+        @logger.info("Log stream #{@interp_log_stream_name} already exists")
       rescue Exception => e
         @logger.error(e)
       end
