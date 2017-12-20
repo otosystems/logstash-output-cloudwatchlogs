@@ -140,9 +140,11 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
     return unless output?(event)
 
     # log some output to debug what's going on
-    @logger.info("Event received. [docker][name]: #{event.get("[docker][name]")} #{event.sprintf(@log_stream_name)}")
-    require 'time'
-    $lgn = "#{event.get("[docker][name]")}-#{Time.now.strftime("%Y%m%d")}"
+    if @dry_run
+      @logger.info("Event received. [docker][name]: #{event.get("[docker][name]")}, log_stream_name from config: #{event.sprintf(@log_stream_name)}")
+    end
+    # interpolate log_stream_name provided in the config
+    $lgn = event.sprintf(@log_stream_name)
 
     if event == LogStash::SHUTDOWN
       @buffer.close
