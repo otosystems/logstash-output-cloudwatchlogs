@@ -136,8 +136,10 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
   def receive(event)
     return unless output?(event)
 
-    # interpolate log_stream_name param
-    @log_stream_name = event.sprintf(@log_stream_name)
+    # grab the docker image name from event 
+    if @log_stream_name.include? "%[docker][name]%"
+      @log_stream_name.gsub!("%[docker][name]%", event.get("[docker][image]"))
+    end
 
     if event == LogStash::SHUTDOWN
       @buffer.close
