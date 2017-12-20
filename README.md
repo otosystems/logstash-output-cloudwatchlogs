@@ -123,6 +123,11 @@ Here are all the supported options:
 * queue_size: number, the max number of batches to buffer, defaults to 5.
 * dry_run: boolean, prints out the log events to stdout instead of sending them to CloudWatch Logs service.
 
+Extra options:
+
+* use_codec: boolean, allows you to to enable a custom codec to be used for event formatting (default: false)
+* codec: string, the type of codec that you want to use (ex: "json")
+
 
 In addition to configuring the AWS credential in the configuration file, credentials can also be loaded automatically from the following locations:
 
