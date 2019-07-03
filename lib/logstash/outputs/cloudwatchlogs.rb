@@ -99,7 +99,7 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
       @logger.warn(":buffer_duration is smaller than the min value. Use #{MIN_BUFFER_DURATION} instead.")
       @buffer_duration = MIN_BUFFER_DURATION
     end
-    @sequence_token = nil
+    @sequence_token = Hash.new
     @last_flush = Time.now.to_f
     @buffer = Buffer.new(
       max_batch_count: batch_count, max_batch_size: batch_size,
@@ -128,7 +128,7 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
 
     if @use_codec
       @codec.on_event() {|event, payload| @buffer.enq({:timestamp => event.timestamp.time.to_f*1000,
-        :message => payload})}
+        :message => payload, :log_group => event.sprintf(@log_group_name), :log_stream => event.sprintf(@log_stream_name)})}
     end
   end # def register
 
@@ -149,7 +149,7 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
       @codec.encode(event)
     else
       @buffer.enq({:timestamp => event.timestamp.time.to_f*1000,
-        :message => event.get(MESSAGE) })
+        :message => event.get(MESSAGE), :log_group => event.sprintf(@log_group_name), :log_stream => event.sprintf(@log_stream_name) })
     end
   end # def receive
 
@@ -165,20 +165,28 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
   def flush(events)
     return if events.nil? or events.empty?
     log_event_batches = prepare_log_events(events)
-    log_event_batches.each do |log_events|
-      put_log_events(log_events)
+    # [{gr=> {str => [ssd,add,adad], str2 => [adas]}, gr2 => {s1=> []}}, {gr=> {str => [ssd,add,adad], str2 => [adas]}, gr2 => {s1=> []}}]
+    log_event_batches.each do |log_events_hash|
+      # {gr=> {str => [ssd,add,adad], str2 => [adas]}
+      log_events_hash.each do |log_group, log_stream_hash|
+        # gr, {str => [ssd,add,adad], str2 => [adas]}
+        log_stream_hash.each do |log_stream, log_events|
+          # str, [ssd,add,adad]
+          put_log_events(log_events, log_group, log_stream)
+        end
+      end
     end
   end
 
   private
-  def put_log_events(log_events)
+  def put_log_events(log_events, log_group, log_stream)
     return if log_events.nil? or log_events.empty?
     # Shouldn't send two requests within MIN_DELAY
     delay = MIN_DELAY - (Time.now.to_f - @last_flush)
     sleep(delay) if delay > 0
     backoff = 1
     begin
-      @logger.info("Sending #{log_events.size} events to #{@log_group_name}/#{@log_stream_name}")
+      @logger.info("Sending #{log_events.size} events to #{log_group}/#{log_stream}")
       @last_flush = Time.now.to_f
       if @dry_run
         log_events.each do |event|
@@ -187,21 +195,21 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
         return
       end
       response = @cwl.put_log_events(
-          :log_group_name => @log_group_name,
-          :log_stream_name => @log_stream_name,
+          :log_group_name => log_group,
+          :log_stream_name => log_stream,
           :log_events => log_events,
-          :sequence_token => @sequence_token
+          :sequence_token => @sequence_token[log_group+log_stream]
       )
-      @sequence_token = response.next_sequence_token
+      @sequence_token[log_group+log_stream] = response.next_sequence_token
     rescue Aws::CloudWatchLogs::Errors::InvalidSequenceTokenException => e
       @logger.warn(e)
       if /sequenceToken(?:\sis)?: ([^\s]+)/ =~ e.to_s
         if $1 == 'null'
-          @sequence_token = nil
+          @sequence_token[log_group+log_stream] = nil
         else
-          @sequence_token = $1
+          @sequence_token[log_group+log_stream] = $1
         end
-        @logger.info("Will retry with new sequence token #{@sequence_token}")
+        @logger.info("Will retry with new sequence token #{@sequence_token[log_group+log_stream]}")
         retry
       else
         @logger.error("Cannot find sequence token from response")
@@ -210,9 +218,9 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
       @logger.warn(e)
       if /sequenceToken(?:\sis)?: ([^\s]+)/ =~ e.to_s
         if $1 == 'null'
-          @sequence_token = nil
+          @sequence_token[log_group+log_stream] = nil
         else
-          @sequence_token = $1
+          @sequence_token[log_group+log_stream] = $1
         end
         @logger.info("Data already accepted and no need to resend")
       else
@@ -221,16 +229,16 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
     rescue Aws::CloudWatchLogs::Errors::ResourceNotFoundException => e
       @logger.info("Will create log group/stream and retry")
       begin
-        @cwl.create_log_group(:log_group_name => @log_group_name)
+        @cwl.create_log_group(:log_group_name => log_group)
       rescue Aws::CloudWatchLogs::Errors::ResourceAlreadyExistsException => e
-        @logger.info("Log group #{@log_group_name} already exists")
+        @logger.info("Log group #{log_group} already exists")
       rescue Exception => e
         @logger.error(e)
       end
       begin
-        @cwl.create_log_stream(:log_group_name => @log_group_name, :log_stream_name => @log_stream_name)
+        @cwl.create_log_stream(:log_group_name => log_group, :log_stream_name => log_stream)
       rescue Aws::CloudWatchLogs::Errors::ResourceAlreadyExistsException => e
-        @logger.info("Log stream #{@log_stream_name} already exists")
+        @logger.info("Log stream #{log_stream} already exists")
       rescue Exception => e
         @logger.error(e)
       end
@@ -262,21 +270,44 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
     log_events = events.sort {|e1,e2| e1[:timestamp] <=> e2[:timestamp]}
     batches = []
     if log_events[-1][:timestamp] - log_events[0][:timestamp] > MAX_DISTANCE_BETWEEN_EVENTS
-      temp_batch = []
+      # we need to batch
+      temp_batches_by_log_group = {}
+      last_log_event = nil
       log_events.each do |log_event|
-        if temp_batch.empty? || log_event[:timestamp] - temp_batch[0][:timestamp] <= MAX_DISTANCE_BETWEEN_EVENTS
-          temp_batch << log_event
+        templated_log_group = log_event[:log_group]
+        templated_log_stream_name = log_event[:log_stream]
+
+        if temp_batches_by_log_group[templated_log_group].nil?
+          temp_batches_by_log_group[templated_log_group] = {templated_log_stream_name => [] }
+        end
+
+        this_batch = temp_batches_by_log_group[templated_log_group][templated_log_stream_name]
+        if this_batch.nil?
+          temp_batches_by_log_group[templated_log_group] = {templated_log_stream_name => [] }
+          this_batch = []
+        end
+        if this_batch.empty? || last_log_event.nil? || log_event[:timestamp] - last_log_event <= MAX_DISTANCE_BETWEEN_EVENTS
+          temp_batches_by_log_group[templated_log_group][templated_log_stream_name] << log_event.except(:log_group, :log_stream)
         else
-          batches << temp_batch
-          temp_batch = []
-          temp_batch << log_event
+          batches << temp_batches_by_log_group
+          temp_batches_by_log_group = {templated_log_group => {templated_log_stream_name => [log_event.except(:log_group, :log_stream)]}}
         end
       end
-      if not temp_batch.empty?
-        batches << temp_batch
+      unless temp_batches_by_log_group.empty?
+        batches << temp_batches_by_log_group
       end
     else
-      batches << log_events
+      temp_batches_by_log_group = {}
+      log_events.each do |log_event|
+        templated_log_group = log_event[:log_group]
+        templated_log_stream_name = log_event[:log_stream]
+
+        if temp_batches_by_log_group[templated_log_group].nil? || temp_batches_by_log_group[templated_log_group][templated_log_stream_name].nil?
+          temp_batches_by_log_group[templated_log_group] = {templated_log_stream_name => [] }
+        end
+          temp_batches_by_log_group[templated_log_group][templated_log_stream_name] << log_event.except(:log_group, :log_stream)
+      end
+      batches << temp_batches_by_log_group
     end
     batches
   end
