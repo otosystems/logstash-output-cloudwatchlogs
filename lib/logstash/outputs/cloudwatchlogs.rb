@@ -202,29 +202,37 @@ class LogStash::Outputs::CloudWatchLogs < LogStash::Outputs::Base
       )
       @sequence_token[log_group+log_stream] = response.next_sequence_token
     rescue Aws::CloudWatchLogs::Errors::InvalidSequenceTokenException => e
-      @logger.warn(e)
-      if /sequenceToken(?:\sis)?: ([^\s]+)/ =~ e.to_s
-        if $1 == 'null'
-          @sequence_token[log_group+log_stream] = nil
+      # @logger.warn(e)
+      begin
+        describe_response = @cwl.describe_log_streams(
+            :log_group_name => log_group,
+            :log_stream_name_prefix => log_stream,
+            :limit=> 1,
+            )
+        if !describe_response.empty?
+          token = describe_response.log_streams[0].upload_sequence_token
+          @sequence_token[log_group+log_stream] = token
+          @logger.info("Will retry with new sequence token #{@sequence_token[log_group+log_stream]}")
+          retry
         else
-          @sequence_token[log_group+log_stream] = $1
+          @logger.error("Cannot find sequence token from response")
         end
-        @logger.info("Will retry with new sequence token #{@sequence_token[log_group+log_stream]}")
-        retry
-      else
-        @logger.error("Cannot find sequence token from response")
       end
     rescue Aws::CloudWatchLogs::Errors::DataAlreadyAcceptedException => e
-      @logger.warn(e)
-      if /sequenceToken(?:\sis)?: ([^\s]+)/ =~ e.to_s
-        if $1 == 'null'
-          @sequence_token[log_group+log_stream] = nil
+      # @logger.warn(e)
+      begin
+        describe_response = @cwl.describe_log_streams(
+            :log_group_name => log_group,
+            :log_stream_name_prefix => log_stream,
+            :limit=> 1,
+            )
+        if !describe_response.empty?
+          token = describe_response.log_streams[0].upload_sequence_token
+          @sequence_token[log_group+log_stream] = token
+          @logger.info("Data already accepted and no need to resend")
         else
-          @sequence_token[log_group+log_stream] = $1
+          @logger.error("Cannot find sequence token from response")
         end
-        @logger.info("Data already accepted and no need to resend")
-      else
-        @logger.error("Cannot find sequence token from response")
       end
     rescue Aws::CloudWatchLogs::Errors::ResourceNotFoundException => e
       @logger.info("Will create log group/stream and retry")
